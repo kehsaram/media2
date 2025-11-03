@@ -1,0 +1,10 @@
+{
+  // Enable richer debug info for Flutter widgets
+  "dart.flutterTrackWidgetCreation": true,
+  // Prefer showing all devices in the device selector
+  "dart.flutterSelectDeviceWhenConnected": true,
+  // Show DevTools when a debug session starts (optional)
+  "dart.openDevTools": "flutter",
+  // Use system default browser for DevTools (avoids custom Chrome flags)
+  "dart.devToolsBrowser": "default"
+}

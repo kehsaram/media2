@@ -1,0 +1,47 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Allow any nested files under media/<userId>/<mediaType>/...
+    match /media/{userId}/{mediaType}/{filePath=**} {
+      // Reads: any authenticated user can read media
+      allow read: if request.auth != null;
+
+      // Creates: owner only + validate folder type, size and contentType
+      allow create: if request.auth != null
+                     && request.auth.uid == userId
+                     && isValidMediaType(mediaType)
+                     && isValidFileSize(request.resource.size)
+                     && isValidContentType(request.resource.contentType);
+
+      // Updates: owner only, and disallow changing object bytes (metadata-only)
+      allow update: if request.auth != null
+                     && request.auth.uid == userId
+                     && isValidMediaType(mediaType)
+                     && request.resource.size == resource.size
+                     && request.resource.contentType == resource.contentType;
+
+      // Deletes: owner only
+      allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
+
+function isValidMediaType(mediaType) {
+  return mediaType in ['image', 'video', 'audio', 'document'];
+}
+
+function isValidFileSize(size) {
+  return size < 100 * 1024 * 1024; // 100MB
+}
+
+function isValidContentType(contentType) {
+  return contentType.matches('image/.*') ||
+         contentType.matches('video/.*') ||
+         contentType.matches('audio/.*') ||
+         contentType.matches('application/.*') ||
+         contentType.matches('text/.*');
+}

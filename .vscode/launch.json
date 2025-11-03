@@ -1,0 +1,52 @@
+{
+  // VS Code debug configurations for Flutter
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Flutter: Debug (Windows Desktop)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "flutterMode": "debug",
+      "deviceId": "windows"
+    },
+    {
+      "name": "Flutter: Debug (Chrome)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "flutterMode": "debug",
+      "deviceId": "chrome"
+    },
+    {
+      "name": "Flutter: Debug (Chrome - HTML renderer)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "flutterMode": "debug",
+      "deviceId": "chrome",
+      "toolArgs": ["--web-renderer", "html"]
+    },
+    {
+      "name": "Flutter: Debug (Edge)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "flutterMode": "debug",
+      "deviceId": "edge"
+    },
+    {
+      "name": "Flutter: Debug (Web Server)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "flutterMode": "debug",
+      "deviceId": "web-server"
+    },
+    {
+      "name": "Flutter: Attach to Process",
+      "request": "attach",
+      "type": "dart"
+    }
+  ]
+}

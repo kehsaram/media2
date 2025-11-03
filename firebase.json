@@ -1,0 +1,21 @@
+{
+	"flutter": {
+		"platforms": {
+			"dart": {
+				"lib/firebase_options.dart": {
+					"projectId": "media2-38118",
+					"configurations": {
+						"web": "1:578599569579:web:fc5debbc3a77eee0fc0fee"
+					}
+				}
+			}
+		}
+	},
+	"firestore": {
+			"rules": "firestore.rules",
+			"indexes": "firestore.indexes.json"
+	},
+	"storage": {
+		"rules": "storage.rules"
+	}
+}
