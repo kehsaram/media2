@@ -256,16 +256,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
     _setUploadInProgress(true);
 
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => UploadProgressDialog(
-        fileName: file.path.split('/').last,
-        progress: progress,
-      ),
-    );
-
     try {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => UploadProgressDialog(
+          fileName: file.path.split('/').last,
+          progress: progress,
+        ),
+      );
+
       await _mediaService.uploadMedia(
         file: file,
         mediaType: mediaType,
@@ -273,7 +273,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       );
 
       if (mounted) {
-        _setUploadInProgress(false);
         Navigator.pop(context); // Close progress dialog
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -284,10 +283,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       }
     } catch (e) {
       if (mounted) {
-        _setUploadInProgress(false);
         Navigator.pop(context); // Close progress dialog
         _showErrorSnackBar('Upload failed: $e');
       }
+    } finally {
+      _setUploadInProgress(false);
     }
   }
 
@@ -300,14 +300,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
     _setUploadInProgress(true);
 
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) =>
-          UploadProgressDialog(fileName: fileName, progress: progress),
-    );
-
     try {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) =>
+            UploadProgressDialog(fileName: fileName, progress: progress),
+      );
+
       await _mediaService.uploadMediaBytes(
         bytes: bytes,
         fileName: fileName,
@@ -316,7 +316,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       );
 
       if (mounted) {
-        _setUploadInProgress(false);
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -327,10 +326,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       }
     } catch (e) {
       if (mounted) {
-        _setUploadInProgress(false);
         Navigator.pop(context);
         _showErrorSnackBar('Upload failed: $e');
       }
+    } finally {
+      _setUploadInProgress(false);
     }
   }
 
