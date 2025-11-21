@@ -43,6 +43,34 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _signOut() async {
+    // Check for ongoing uploads before signing out
+    if (_hasOngoingUploads) {
+      final shouldProceed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Uncommitted changes detected'),
+          content: const Text(
+            'An upload is currently in progress. Are you sure you want to sign out? This will cancel the upload.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('Proceed'),
+            ),
+          ],
+        ),
+      );
+      
+      if (shouldProceed != true) {
+        return;
+      }
+    }
+
     try {
       await _authService.signOut();
       if (mounted) {
