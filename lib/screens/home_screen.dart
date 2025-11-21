@@ -45,28 +45,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Future<void> _signOut() async {
     // Check for ongoing uploads before signing out
     if (_hasOngoingUploads) {
-      final shouldProceed = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Uncommitted changes detected'),
-          content: const Text(
-            'An upload is currently in progress. Are you sure you want to sign out? This will cancel the upload.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              style: TextButton.styleFrom(foregroundColor: Colors.red),
-              child: const Text('Proceed'),
-            ),
-          ],
-        ),
+      final shouldProceed = await _showUncommittedChangesDialog(
+        'An upload is currently in progress. Are you sure you want to sign out? This will cancel the upload.',
       );
       
-      if (shouldProceed != true) {
+      if (!shouldProceed) {
         return;
       }
     }
@@ -271,9 +254,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Future<void> _uploadFile(File file, String mediaType) async {
     final progress = ValueNotifier<double>(0.0);
 
-    setState(() {
-      _hasOngoingUploads = true;
-    });
+    _setUploadInProgress(true);
 
     showDialog(
       context: context,
@@ -292,9 +273,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       );
 
       if (mounted) {
-        setState(() {
-          _hasOngoingUploads = false;
-        });
+        _setUploadInProgress(false);
         Navigator.pop(context); // Close progress dialog
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -305,9 +284,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       }
     } catch (e) {
       if (mounted) {
-        setState(() {
-          _hasOngoingUploads = false;
-        });
+        _setUploadInProgress(false);
         Navigator.pop(context); // Close progress dialog
         _showErrorSnackBar('Upload failed: $e');
       }
@@ -321,9 +298,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   ) async {
     final progress = ValueNotifier<double>(0.0);
 
-    setState(() {
-      _hasOngoingUploads = true;
-    });
+    _setUploadInProgress(true);
 
     showDialog(
       context: context,
@@ -341,9 +316,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       );
 
       if (mounted) {
-        setState(() {
-          _hasOngoingUploads = false;
-        });
+        _setUploadInProgress(false);
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -354,9 +327,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       }
     } catch (e) {
       if (mounted) {
-        setState(() {
-          _hasOngoingUploads = false;
-        });
+        _setUploadInProgress(false);
         Navigator.pop(context);
         _showErrorSnackBar('Upload failed: $e');
       }
@@ -369,18 +340,20 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  Future<bool> _onWillPop() async {
-    if (!_hasOngoingUploads) {
-      return true;
+  void _setUploadInProgress(bool inProgress) {
+    if (mounted) {
+      setState(() {
+        _hasOngoingUploads = inProgress;
+      });
     }
+  }
 
-    final shouldPop = await showDialog<bool>(
+  Future<bool> _showUncommittedChangesDialog(String actionMessage) async {
+    final shouldProceed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Uncommitted changes detected'),
-        content: const Text(
-          'An upload is currently in progress. Are you sure you want to leave? This will cancel the upload.',
-        ),
+        content: Text(actionMessage),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
@@ -395,7 +368,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       ),
     );
 
-    return shouldPop ?? false;
+    return shouldProceed ?? false;
+  }
+
+  Future<bool> _onWillPop() async {
+    if (!_hasOngoingUploads) {
+      return true;
+    }
+
+    return await _showUncommittedChangesDialog(
+      'An upload is currently in progress. Are you sure you want to leave? This will cancel the upload.',
+    );
   }
 
   Stream<QuerySnapshot> _getFilteredMedia() {
