@@ -21,8 +21,8 @@ fi
 echo "✓ gsutil found"
 echo ""
 
-# Set bucket name
-BUCKET="gs://media2-38118.appspot.com"
+# Set bucket name (can be overridden with environment variable)
+BUCKET="${FIREBASE_STORAGE_BUCKET:-gs://media2-38118.appspot.com}"
 
 echo "Checking CORS configuration for: $BUCKET"
 echo ""

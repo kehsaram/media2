@@ -21,8 +21,12 @@ if %ERRORLEVEL% NEQ 0 (
 echo * gsutil found
 echo.
 
-REM Set bucket name
-set BUCKET=gs://media2-38118.appspot.com
+REM Set bucket name (can be overridden with environment variable)
+if not defined FIREBASE_STORAGE_BUCKET (
+    set BUCKET=gs://media2-38118.appspot.com
+) else (
+    set BUCKET=%FIREBASE_STORAGE_BUCKET%
+)
 
 echo Checking CORS configuration for: %BUCKET%
 echo.

@@ -6,6 +6,20 @@ Images and other media files are not loading in Chrome (or other browsers) due t
 ## Solution
 You need to configure CORS settings on your Firebase Storage bucket to allow browsers to fetch resources.
 
+## ⚠️ Important: Choose the Right Configuration
+
+This project includes TWO CORS configuration files:
+
+1. **`cors.json`** - Development/Testing (allows all origins)
+   - ✅ Use for: Local development, testing, getting started
+   - ⚠️ Security: Allows ANY website to access your storage
+   - 💡 Quick start configuration
+
+2. **`cors-production.json`** - Production (restricted origins)
+   - ✅ Use for: Production deployments
+   - 🔒 Security: Only allows specific domains
+   - 💡 Must update with your actual domain names
+
 ## Prerequisites
 - Google Cloud SDK (gcloud CLI) installed
 - Access to your Firebase project
@@ -44,12 +58,20 @@ gcloud config set project media2-38118
 
 ### 3. Apply CORS Configuration
 
+**For Development/Testing:**
 ```bash
 # Navigate to your project directory
 cd /path/to/media2
 
-# Apply the CORS configuration to your Firebase Storage bucket
+# Apply the development CORS configuration (allows all origins)
 gsutil cors set cors.json gs://media2-38118.appspot.com
+```
+
+**For Production:**
+```bash
+# 1. First, edit cors-production.json and replace "yourdomain.com" with your actual domain
+# 2. Then apply the production CORS configuration
+gsutil cors set cors-production.json gs://media2-38118.appspot.com
 ```
 
 ### 4. Verify CORS Configuration
@@ -110,6 +132,27 @@ For production, you should restrict the `origin` field to your specific domains:
     "maxAgeSeconds": 3600
   }
 ]
+```
+
+## Using Verification Scripts
+
+We've included helper scripts to verify CORS configuration:
+
+**Unix/Mac:**
+```bash
+./check_cors.sh
+
+# Or for a different bucket:
+FIREBASE_STORAGE_BUCKET=gs://your-bucket.appspot.com ./check_cors.sh
+```
+
+**Windows:**
+```cmd
+check_cors.bat
+
+REM Or for a different bucket:
+set FIREBASE_STORAGE_BUCKET=gs://your-bucket.appspot.com
+check_cors.bat
 ```
 
 ## Testing
