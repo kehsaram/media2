@@ -28,6 +28,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   late TabController _tabController;
   String _currentFilter = 'all';
+  bool _hasOngoingUploads = false;
 
   @override
   void initState() {
@@ -242,6 +243,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Future<void> _uploadFile(File file, String mediaType) async {
     final progress = ValueNotifier<double>(0.0);
 
+    setState(() {
+      _hasOngoingUploads = true;
+    });
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -259,6 +264,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       );
 
       if (mounted) {
+        setState(() {
+          _hasOngoingUploads = false;
+        });
         Navigator.pop(context); // Close progress dialog
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -269,6 +277,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       }
     } catch (e) {
       if (mounted) {
+        setState(() {
+          _hasOngoingUploads = false;
+        });
         Navigator.pop(context); // Close progress dialog
         _showErrorSnackBar('Upload failed: $e');
       }
@@ -281,6 +292,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     String mediaType,
   ) async {
     final progress = ValueNotifier<double>(0.0);
+
+    setState(() {
+      _hasOngoingUploads = true;
+    });
 
     showDialog(
       context: context,
@@ -298,6 +313,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       );
 
       if (mounted) {
+        setState(() {
+          _hasOngoingUploads = false;
+        });
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -308,6 +326,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       }
     } catch (e) {
       if (mounted) {
+        setState(() {
+          _hasOngoingUploads = false;
+        });
         Navigator.pop(context);
         _showErrorSnackBar('Upload failed: $e');
       }
@@ -318,6 +339,35 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), backgroundColor: Colors.red),
     );
+  }
+
+  Future<bool> _onWillPop() async {
+    if (!_hasOngoingUploads) {
+      return true;
+    }
+
+    final shouldPop = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Uncommitted changes detected'),
+        content: const Text(
+          'An upload is currently in progress. Are you sure you want to leave? This will cancel the upload.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Proceed'),
+          ),
+        ],
+      ),
+    );
+
+    return shouldPop ?? false;
   }
 
   Stream<QuerySnapshot> _getFilteredMedia() {
@@ -332,7 +382,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
 
-    return Scaffold(
+    return WillPopScope(
+      onWillPop: _onWillPop,
+      child: Scaffold(
       appBar: AppBar(
         title: const Text('Media Storage'),
         backgroundColor: Colors.blue[600],
@@ -550,6 +602,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         backgroundColor: Colors.blue[600],
         foregroundColor: Colors.white,
         child: const Icon(Icons.add),
+      ),
       ),
     );
   }
