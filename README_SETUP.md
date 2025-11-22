@@ -50,6 +50,23 @@ You need to apply security rules to your Firebase project:
 2. Enable **Email/Password** authentication
 3. Optionally enable **Email link (passwordless sign-in)**
 
+### 4. **CRITICAL: Configure CORS for Web/Chrome** 🌐
+If you're running the app on web (Chrome, Firefox, etc.), you MUST configure CORS to allow images to load:
+
+1. See detailed instructions in **`CORS_SETUP.md`** file
+2. Quick steps:
+   ```bash
+   # Install Google Cloud SDK if not already installed
+   gcloud auth login
+   gcloud config set project media2-38118
+   
+   # Apply CORS configuration
+   gsutil cors set cors.json gs://media2-38118.appspot.com
+   ```
+3. This fixes the "CORS policy" errors that prevent images from loading in browsers
+
+**Without CORS configuration, images will NOT load on web platforms!**
+
 ## 🚀 How to Run the App
 
 1. **Connect a device or start emulator**
