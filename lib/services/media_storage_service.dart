@@ -765,6 +765,119 @@ class MediaStorageService {
 
     return 'document'; // Default fallback
   }
+
+  /// Ensure Firestore docs always expose a usable storagePath/uniqueFileName.
+  static void hydrateMediaDocument(Map<String, dynamic> data) {
+    final derivedPath = _deriveStoragePath(data);
+    if (derivedPath != null && derivedPath.isNotEmpty) {
+      data['storagePath'] = derivedPath;
+      final unique = data['uniqueFileName'];
+      if (unique is! String || unique.isEmpty) {
+        data['uniqueFileName'] = path.basename(derivedPath);
+      }
+    }
+  }
+
+  static String? _deriveStoragePath(Map<String, dynamic> data) {
+    final existing = data['storagePath'];
+    if (existing is String && existing.isNotEmpty) {
+      return existing;
+    }
+
+    final downloadUrl = data['downloadUrl'] as String?;
+    final fromDownload = deriveStoragePathFromUrl(downloadUrl);
+    if (fromDownload != null && fromDownload.isNotEmpty) {
+      return fromDownload;
+    }
+
+    final uploadedBy = data['uploadedBy'] as String?;
+    final mediaType = data['mediaType'] as String?;
+    final thumbUrl = data['thumbnailUrl'] as String?;
+    final fromThumb = deriveStoragePathFromUrl(thumbUrl);
+    if (fromThumb != null && fromThumb.contains('/thumbnails/') &&
+        uploadedBy != null && mediaType != null) {
+      final parts = fromThumb.split('/thumbnails/');
+      if (parts.length == 2) {
+        var tail = parts[1];
+        if (tail.endsWith('.jpg')) {
+          tail = tail.substring(0, tail.length - 4);
+        }
+        if (tail.isNotEmpty) {
+          data['uniqueFileName'] ??= tail;
+          return 'media/$uploadedBy/$mediaType/$tail';
+        }
+      }
+    }
+
+    final unique = data['uniqueFileName'] as String?;
+    if (uploadedBy != null && mediaType != null && unique != null &&
+        unique.isNotEmpty) {
+      return 'media/$uploadedBy/$mediaType/$unique';
+    }
+
+    return null;
+  }
+
+  static String? deriveStoragePathFromUrl(String? url) {
+    if (url == null || url.isEmpty) {
+      return null;
+    }
+    Uri? parsed;
+    try {
+      parsed = Uri.parse(url);
+    } catch (_) {
+      return null;
+    }
+    final host = parsed.host.toLowerCase();
+
+    // Standard Firebase download URL: https://firebasestorage.googleapis.com/v0/b/<bucket>/o/<path>
+    if (host.contains('firebasestorage.googleapis.com')) {
+      final idx = parsed.pathSegments.indexOf('o');
+      if (idx != -1 && idx + 1 < parsed.pathSegments.length) {
+        final encodedPath = parsed.pathSegments[idx + 1];
+        try {
+          return Uri.decodeFull(encodedPath);
+        } catch (_) {
+          return encodedPath;
+        }
+      }
+      final nameParam = parsed.queryParameters['name'];
+      if (nameParam != null && nameParam.isNotEmpty) {
+        try {
+          return Uri.decodeFull(nameParam);
+        } catch (_) {
+          return nameParam;
+        }
+      }
+    }
+
+    // Console / GCS style URLs: https://storage.googleapis.com/<bucket>/<path>
+    if (host.contains('storage.googleapis.com') ||
+        host.contains('storage.cloud.google.com')) {
+      final segments = List<String>.from(parsed.pathSegments);
+      if (segments.isEmpty) {
+        return null;
+      }
+      final bucket = FirebaseStorage.instance.bucket;
+      if (segments.first == bucket && segments.length > 1) {
+        segments.removeAt(0);
+      } else if (segments.length > 2 && segments.first == 'b' &&
+          segments[1] == bucket) {
+        segments.removeRange(0, 2);
+      }
+      if (segments.isEmpty) {
+        return null;
+      }
+      final rawPath = segments.join('/');
+      try {
+        return Uri.decodeFull(rawPath);
+      } catch (_) {
+        return rawPath;
+      }
+    }
+
+    return null;
+  }
 }
 
 class _ImageProcessResult {
