@@ -28,6 +28,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   late TabController _tabController;
   String _currentFilter = 'all';
+  bool _hasOngoingUploads = false;
 
   @override
   void initState() {
@@ -42,6 +43,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _signOut() async {
+    // Check for ongoing uploads before signing out
+    if (_hasOngoingUploads) {
+      final shouldProceed = await _showUncommittedChangesDialog(
+        'An upload is currently in progress. Are you sure you want to sign out? This will cancel the upload.',
+      );
+      
+      if (!shouldProceed) {
+        return;
+      }
+    }
+
     try {
       await _authService.signOut();
       if (mounted) {
@@ -242,16 +254,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Future<void> _uploadFile(File file, String mediaType) async {
     final progress = ValueNotifier<double>(0.0);
 
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => UploadProgressDialog(
-        fileName: file.path.split('/').last,
-        progress: progress,
-      ),
-    );
+    _setUploadInProgress(true);
 
     try {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => UploadProgressDialog(
+          fileName: file.path.split('/').last,
+          progress: progress,
+        ),
+      );
+
       await _mediaService.uploadMedia(
         file: file,
         mediaType: mediaType,
@@ -272,6 +286,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         Navigator.pop(context); // Close progress dialog
         _showErrorSnackBar('Upload failed: $e');
       }
+    } finally {
+      _setUploadInProgress(false);
     }
   }
 
@@ -282,14 +298,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   ) async {
     final progress = ValueNotifier<double>(0.0);
 
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) =>
-          UploadProgressDialog(fileName: fileName, progress: progress),
-    );
+    _setUploadInProgress(true);
 
     try {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) =>
+            UploadProgressDialog(fileName: fileName, progress: progress),
+      );
+
       await _mediaService.uploadMediaBytes(
         bytes: bytes,
         fileName: fileName,
@@ -311,12 +329,55 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         Navigator.pop(context);
         _showErrorSnackBar('Upload failed: $e');
       }
+    } finally {
+      _setUploadInProgress(false);
     }
   }
 
   void _showErrorSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), backgroundColor: Colors.red),
+    );
+  }
+
+  void _setUploadInProgress(bool inProgress) {
+    if (mounted) {
+      setState(() {
+        _hasOngoingUploads = inProgress;
+      });
+    }
+  }
+
+  Future<bool> _showUncommittedChangesDialog(String actionMessage) async {
+    final shouldProceed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Uncommitted changes detected'),
+        content: Text(actionMessage),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Proceed'),
+          ),
+        ],
+      ),
+    );
+
+    return shouldProceed ?? false;
+  }
+
+  Future<bool> _onWillPop() async {
+    if (!_hasOngoingUploads) {
+      return true;
+    }
+
+    return await _showUncommittedChangesDialog(
+      'An upload is currently in progress. Are you sure you want to leave? This will cancel the upload.',
     );
   }
 
@@ -332,7 +393,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
 
-    return Scaffold(
+    return WillPopScope(
+      onWillPop: _onWillPop,
+      child: Scaffold(
       appBar: AppBar(
         title: const Text('Media Storage'),
         backgroundColor: Colors.blue[600],
@@ -550,6 +613,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         backgroundColor: Colors.blue[600],
         foregroundColor: Colors.white,
         child: const Icon(Icons.add),
+      ),
       ),
     );
   }
