@@ -518,6 +518,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             itemBuilder: (context, index) {
               final data = docs[index].data() as Map<String, dynamic>;
               data['id'] = docs[index].id;
+              MediaStorageService.hydrateMediaDocument(data);
               return MediaGridItem(
                 mediaData: data,
                 onDelete: () async {

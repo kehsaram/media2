@@ -10,6 +10,7 @@ import '../services/media_storage_service.dart';
 import 'video_player_sheet.dart';
 import 'pdf_viewer_sheet.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'web_image.dart';
 
 class MediaGridItem extends StatefulWidget {
   final Map<String, dynamic> mediaData;
@@ -36,6 +37,29 @@ class _MediaGridItemState extends State<MediaGridItem> {
     String? alt,
     BoxFit fit = BoxFit.cover,
   }) {
+    if (kIsWeb) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: WebImage(
+          imageUrl: primary,
+          fit: fit,
+        ),
+      );
+    }
+
+    FutureBuilder<Uint8List?> buildBytesFallback(String url) {
+      return FutureBuilder<Uint8List?>(
+        future: _loadBytesForUrl(url),
+        builder: (context, snap) {
+          final b = snap.data;
+          if (b != null && b.isNotEmpty) {
+            return Image.memory(b, fit: fit);
+          }
+          return _fallbackTile('image');
+        },
+      );
+    }
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
       child: Image.network(
@@ -72,35 +96,29 @@ class _MediaGridItemState extends State<MediaGridItem> {
                   // ignore: avoid_print
                   print('[MediaGridItem:image] ALT URL failed');
                 }
-                // Last-chance: fetch via HTTP and render bytes
                 final tryUrl = alt.isNotEmpty ? alt : primary;
-                return FutureBuilder<Uint8List?>(
-                  future: _httpFetchBytes(tryUrl),
-                  builder: (context, snap) {
-                    final b = snap.data;
-                    if (b != null && b.isNotEmpty) {
-                      return Image.memory(b, fit: fit);
-                    }
-                    return _fallbackTile('image');
-                  },
-                );
+                return buildBytesFallback(tryUrl);
               },
             );
           }
-          // Last-chance: fetch via HTTP and render bytes
-          return FutureBuilder<Uint8List?>(
-            future: _httpFetchBytes(primary),
-            builder: (context, snap) {
-              final b = snap.data;
-              if (b != null && b.isNotEmpty) {
-                return Image.memory(b, fit: fit);
-              }
-              return _fallbackTile('image');
-            },
-          );
+          return buildBytesFallback(primary);
         },
       ),
     );
+  }
+
+  Future<Uint8List?> _loadBytesForUrl(String url) async {
+    final sdkBytes = await _storageFetchBytes(url);
+    if (sdkBytes != null && sdkBytes.isNotEmpty) {
+      _lastByteSource = 'storage-fetch-bytes';
+      return sdkBytes;
+    }
+    final httpBytes = await _httpFetchBytes(url);
+    if (httpBytes != null && httpBytes.isNotEmpty) {
+      _lastByteSource = 'http-bytes';
+      return httpBytes;
+    }
+    return null;
   }
 
   Future<Uint8List?> _httpFetchBytes(String url) async {
@@ -135,6 +153,38 @@ class _MediaGridItemState extends State<MediaGridItem> {
   }
 
   Future<String?> _resolveDownloadUrl() async {
+    final docHint = _urlHintFromDoc();
+
+    Future<String?> tryDocUrl({bool allowRawFallback = false}) async {
+      if (docHint == null || docHint.isEmpty) return null;
+      final uri = Uri.tryParse(docHint);
+      final host = uri?.host.toLowerCase() ?? '';
+      final needsRehydrate = host.contains('storage.cloud.google.com') ||
+          (host.contains('storage.googleapis.com') &&
+              !host.contains('firebasestorage'));
+
+      if (needsRehydrate) {
+        final hydrated = await _rehydrateFromGcsUrl(docHint);
+        if (hydrated != null && hydrated.isNotEmpty) {
+          _lastUrlSource = 'rehydrated-doc-url';
+          return hydrated;
+        }
+        if (!allowRawFallback) {
+          return null;
+        }
+      }
+
+      _lastUrlSource = 'doc-url';
+      return docHint;
+    }
+
+    if (kIsWeb) {
+      final docUrl = await tryDocUrl();
+      if (docUrl != null) {
+        return docUrl;
+      }
+    }
+
     void log(String msg) {
       if (kDebugMode) {
         // ignore: avoid_print
@@ -291,6 +341,67 @@ class _MediaGridItemState extends State<MediaGridItem> {
         }
       } catch (_) {}
     }
+    final fallbackDoc = await tryDocUrl(allowRawFallback: true);
+    if (fallbackDoc != null) {
+      return fallbackDoc;
+    }
+    return null;
+  }
+
+  // Resolve the ORIGINAL image URL for full-screen preview.
+  // This prioritizes the real object over any thumbnail.
+  Future<String?> _resolveOriginalImageUrl() async {
+    // 1) Try fresh from storagePath (best, handles stale tokens)
+    final storagePath = widget.mediaData['storagePath'] ?? _guessStoragePath();
+    if (storagePath is String && storagePath.isNotEmpty) {
+      try {
+        final fresh = await FirebaseStorage.instance
+            .ref(storagePath)
+            .getDownloadURL();
+        if (fresh.isNotEmpty) return fresh;
+      } catch (_) {}
+    }
+
+    // 2) Try saved downloadUrl refreshed via refFromURL
+    final url = widget.mediaData['downloadUrl'] as String?;
+    if (url != null && url.isNotEmpty) {
+      try {
+        final fresh = await FirebaseStorage.instance
+            .refFromURL(url)
+            .getDownloadURL();
+        if (fresh.isNotEmpty) return fresh;
+      } catch (_) {
+        final re = await _rehydrateFromGcsUrl(url);
+        if (re != null && re.isNotEmpty) return re;
+      }
+      return url;
+    }
+
+    // 3) As a last resort, use the thumbnail URL if that's all we have
+    final thumb = widget.mediaData['thumbnailUrl'] as String?;
+    if (thumb != null && thumb.isNotEmpty) {
+      try {
+        final fresh = await FirebaseStorage.instance
+            .refFromURL(thumb)
+            .getDownloadURL();
+        if (fresh.isNotEmpty) return fresh;
+      } catch (_) {
+        final re = await _rehydrateFromGcsUrl(thumb);
+        if (re != null && re.isNotEmpty) return re;
+      }
+      return thumb;
+    }
+    return null;
+  }
+
+  Future<Uint8List?> _storageFetchBytes(String url) async {
+    try {
+      final ref = FirebaseStorage.instance.refFromURL(url);
+      final data = await ref.getData(5 * 1024 * 1024);
+      if (data != null && data.isNotEmpty) {
+        return data;
+      }
+    } catch (_) {}
     return null;
   }
 
@@ -306,16 +417,47 @@ class _MediaGridItemState extends State<MediaGridItem> {
         return null;
       }
 
-      // Extract bucket and object path from the URL
+      // Attempt to extract bucket and object for common GCS URL shapes
+      // 1) storage.cloud.google.com/<bucket>/<object...>
+      // 2) storage.googleapis.com/<bucket>/<object...>
+      // 3) storage.googleapis.com/download/storage/v1/b/<bucket>/o/<object>
+      // 4) storage.googleapis.com/storage/v1/b/<bucket>/o/<object>
+      // We only need bucket + object to create a Storage ref.
+
       String bucket = '';
       String objectPath = '';
-      final segs = uri.pathSegments;
+
+      List<String> segs = List.of(uri.pathSegments);
       if (segs.isEmpty) return null;
-      bucket = segs.first; // first is bucket name
-      if (segs.length > 1) {
-        objectPath = segs.sublist(1).join('/');
+
+      bool jsonApiStyle = false;
+      final joined = segs.join('/');
+      if (joined.startsWith('download/storage/v1/') ||
+          joined.startsWith('storage/v1/')) {
+        jsonApiStyle = true;
       }
-      // Decode possible %2F etc.
+
+      if (jsonApiStyle) {
+        // download/storage/v1/b/<bucket>/o/<object>
+        // Find indices of 'b' and 'o'
+        final bIndex = segs.indexOf('b');
+        final oIndex = segs.indexOf('o');
+        if (bIndex != -1 && (bIndex + 1) < segs.length) {
+          bucket = segs[bIndex + 1];
+        }
+        if (oIndex != -1 && (oIndex + 1) < segs.length) {
+          objectPath = segs.sublist(oIndex + 1).join('/');
+        }
+      } else {
+        // cloud console and simple domain style
+        bucket = segs.first;
+        if (segs.length > 1) {
+          objectPath = segs.sublist(1).join('/');
+        }
+      }
+
+      // Decode possible %2F etc. (apply multiple times for safety)
+      objectPath = Uri.decodeComponent(objectPath);
       objectPath = Uri.decodeFull(objectPath);
 
       if (objectPath.isEmpty) return null;
@@ -357,6 +499,18 @@ class _MediaGridItemState extends State<MediaGridItem> {
   }
 
   Future<Uint8List?> _tryLoadThumbBytes() async {
+    if (kIsWeb) {
+      final hintUrl = _urlHintFromDoc();
+      if (hintUrl != null && hintUrl.isNotEmpty) {
+        final bytes = await _httpFetchBytes(hintUrl);
+        if (bytes != null && bytes.isNotEmpty) {
+          _lastByteSource = 'web-http-doc';
+          return bytes;
+        }
+      }
+      // Fall through to Storage-based strategies for older docs that lack URLs
+    }
+
     try {
       final mediaType = widget.mediaData['mediaType'] as String?;
       final storagePath =
@@ -1095,49 +1249,47 @@ class _MediaGridItemState extends State<MediaGridItem> {
   }
 
   Future<void> _showFullImage(BuildContext context) async {
-    // Recompute fresh to avoid using stale cached futures
-    final url = await _resolveDownloadUrl();
+    // Always prefer the ORIGINAL file in full screen
+    final originalUrl = await _resolveOriginalImageUrl();
+    // As a backup, get any bytes we can (thumb or original small)
     final bytes = await _tryLoadThumbBytes();
     if (!mounted) return;
 
-    showDialog(
+    await showGeneralDialog(
       context: context,
-      barrierColor: Colors.black.withOpacity(0.9),
-      builder: (_) {
+      barrierDismissible: true,
+      barrierLabel: 'Close',
+      barrierColor: Colors.black.withOpacity(0.95),
+      pageBuilder: (context, anim1, anim2) {
         Widget content;
-        if (url != null && url.isNotEmpty) {
+        if (originalUrl != null && originalUrl.isNotEmpty) {
           final download = (widget.mediaData['downloadUrl'] as String?) ?? '';
           final thumb = (widget.mediaData['thumbnailUrl'] as String?) ?? '';
-          final alt = url == download ? thumb : download;
-          content = _imageFromUrl(url, alt: alt, fit: BoxFit.contain);
+          final alt = originalUrl == download ? thumb : download;
+          content = _imageFromUrl(originalUrl, alt: alt, fit: BoxFit.contain);
         } else if (bytes != null && bytes.isNotEmpty) {
-          content = ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Image.memory(bytes, fit: BoxFit.contain),
-          );
+          content = Image.memory(bytes, fit: BoxFit.contain);
         } else {
           content = _fallbackTile('image');
         }
-        return Dialog(
-          backgroundColor: Colors.black,
-          insetPadding: const EdgeInsets.all(12),
+
+        return Material(
+          color: Colors.black,
           child: Stack(
             children: [
               Positioned.fill(
                 child: InteractiveViewer(
                   minScale: 0.5,
-                  maxScale: 5,
-                  child: Center(
-                    child: Container(color: Colors.black, child: content),
-                  ),
+                  maxScale: 6,
+                  child: Center(child: content),
                 ),
               ),
               Positioned(
-                top: 8,
-                right: 8,
+                top: 12,
+                right: 12,
                 child: IconButton(
                   onPressed: () => Navigator.of(context).pop(),
-                  icon: const Icon(Icons.close, color: Colors.white),
+                  icon: const Icon(Icons.close, color: Colors.white, size: 28),
                   tooltip: 'Close',
                 ),
               ),
